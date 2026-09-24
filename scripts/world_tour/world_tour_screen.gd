@@ -605,7 +605,7 @@ func _refresh_rankings() -> void:
 
 	for entry in entries:
 		var row := HBoxContainer.new()
-		var is_player := entry["name"] == "KAI LANI"
+		var is_player: bool = entry["name"] == "KAI LANI"
 		var rank_label := _label(str(entry["rank"]), 14, COLOR_TEAL if is_player else COLOR_MUTED, is_player)
 		rank_label.custom_minimum_size.x = 32.0
 		row.add_child(rank_label)
@@ -622,7 +622,7 @@ func _refresh_rankings() -> void:
 
 
 func _refresh_progress() -> void:
-	var completed_count := state.get("completed", []).size()
+	var completed_count: int = state.get("completed", []).size()
 	var progress := float(completed_count) / float(stops.size()) * 100.0
 	progress_bar.value = progress
 	progress_label.text = "%d%%" % roundi(progress)
@@ -709,7 +709,7 @@ func complete_event(stop_id: String, score: int) -> Dictionary:
 		TourSave.save_state(state)
 		return result
 
-	var medal_multiplier := {
+	var medal_multiplier: float = {
 		"bronze": 0.70,
 		"silver": 0.88,
 		"gold": 1.00,
