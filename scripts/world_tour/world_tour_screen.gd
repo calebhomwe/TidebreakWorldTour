@@ -52,6 +52,7 @@ func _ready() -> void:
 	_build_ui()
 	_refresh_all()
 	call_deferred("_focus_initial_control")
+	call_deferred("_setup_arcade")
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -662,6 +663,7 @@ func _select_stop(stop_id: String) -> void:
 	_refresh_stop_cards()
 	_refresh_stop_details()
 	TourSave.save_state(state)
+	_tutorial_on("select")
 
 
 func _start_selected_event() -> void:
@@ -672,10 +674,13 @@ func _start_selected_event() -> void:
 	event_requested.emit(stop.id, stop.target_score)
 	result_dialog_title.text = "%s  •  TARGET %s" % [stop.display_name, _format_number(stop.target_score)]
 	result_overlay.visible = true
+	Arcade.scene("play")
+	_tutorial_on("start")
 
-	var tween := create_tween()
-	result_overlay.modulate.a = 0.0
-	tween.tween_property(result_overlay, "modulate:a", 1.0, 0.18)
+	if not _reduced_motion:
+		var tween := create_tween()
+		result_overlay.modulate.a = 0.0
+		tween.tween_property(result_overlay, "modulate:a", 1.0, 0.18)
 
 	var first_button := _find_first_enabled_button(result_overlay)
 	if first_button != null:
@@ -702,7 +707,8 @@ func complete_event(stop_id: String, score: int) -> Dictionary:
 
 	var best_scores: Dictionary = state.get("best_scores", {})
 	var previous_best := int(best_scores.get(stop.id, 0))
-	best_scores[stop.id] = maxi(previous_best, score)
+	if not Arcade.cheated():  # a result with codes on never sets a best score
+		best_scores[stop.id] = maxi(previous_best, score)
 	state["best_scores"] = best_scores
 
 	if medal == "none":
@@ -753,9 +759,15 @@ func _simulate_result(score_ratio: float) -> void:
 	if stop == null:
 		return
 
+	if _gold_next:
+		_gold_next = false
+		score_ratio = maxf(score_ratio, 1.10)
 	var score := roundi(float(stop.target_score) * score_ratio)
 	var result := complete_event(stop.id, score)
 	_close_result_dialog()
+	Arcade.scene("over", score)
+	_tutorial_on("result")
+	_update_hint()
 
 	var message := "Score %s — %s" % [
 		_format_number(score),
@@ -830,6 +842,8 @@ func _is_stop_completed(stop_id: String) -> bool:
 
 
 func _is_stop_unlocked(stop_id: String) -> bool:
+	if bool(state.get("unlock_all", false)):
+		return _has_stop(stop_id)
 	var index := _get_stop_index(stop_id)
 	if index <= 0:
 		return true
@@ -909,7 +923,11 @@ func _format_number(value: Variant) -> String:
 
 
 func _focus_initial_control() -> void:
-	tour_map.focus_selected()
+	# Enter / A starts the selected event straight away; arrows still move around the tour.
+	if start_button != null and not start_button.disabled:
+		start_button.grab_focus()
+	else:
+		tour_map.focus_selected()
 
 
 func _find_first_enabled_button(root: Node) -> Button:
@@ -984,3 +1002,137 @@ func _panel_style(
 	style.content_margin_top = 8.0
 	style.content_margin_bottom = 8.0
 	return style
+
+
+
+# ---------------------------------------------------------------------------
+# Caleb's Arcade: title and scene reports, restart, exit, tutorial, hints and codes.
+# ---------------------------------------------------------------------------
+const CODES := [
+	{"code": "UNLOCKALL", "effect": "Every tour stop is open"},
+	{"code": "CREDITS5K", "effect": "+5,000 credits"},
+	{"code": "GOLDRUN", "effect": "Your next event counts as a gold-medal heat"},
+]
+const TUTORIAL := [
+	["select", "1/3  Pick a tour stop on the map or the event cards (arrow keys or a tap)."],
+	["start", "2/3  Press START EVENT to paddle out for that heat."],
+	["result", "3/3  Choose how your heat went: bronze or better unlocks the next stop."],
+]
+var _gold_next := false
+var _reduced_motion := false
+var _tut_step := -1
+var _tut_panel: PanelContainer
+var _tut_label: Label
+var _codes_label: Label
+
+
+func _setup_arcade() -> void:
+	if OS.has_feature("web"):
+		_reduced_motion = bool(JavaScriptBridge.eval("!!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)", true))
+	Arcade.restart_requested.connect(_start_selected_event)
+	Arcade.exit_requested.connect(_arcade_exit)
+	Arcade.tutorial_requested.connect(_start_tutorial)
+	Arcade.cheat_entered.connect(_apply_code)
+	Arcade.setup({"tutorial": true, "cheats": CODES})
+	_tut_panel = PanelContainer.new()
+	_tut_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.02, 0.10, 0.12, 0.98), COLOR_GOLD, 2, 10))
+	_tut_panel.anchor_left = 0.5
+	_tut_panel.anchor_right = 0.5
+	_tut_panel.anchor_top = 1.0
+	_tut_panel.anchor_bottom = 1.0
+	_tut_panel.offset_left = -330.0
+	_tut_panel.offset_right = 330.0
+	_tut_panel.offset_top = -190.0
+	_tut_panel.offset_bottom = -110.0
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	_tut_label = _label("", 16, COLOR_TEXT, true)
+	_tut_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tut_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_tut_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(_tut_label)
+	var skip := _button("SKIP", false)
+	skip.pressed.connect(_end_tutorial)
+	row.add_child(skip)
+	_tut_panel.add_child(row)
+	_tut_panel.visible = false
+	add_child(_tut_panel)
+	_codes_label = _label("CODES ON", 14, Color(1.0, 0.45, 0.4), true)
+	_codes_label.anchor_left = 1.0
+	_codes_label.anchor_right = 1.0
+	_codes_label.offset_left = -140.0
+	_codes_label.offset_top = 78.0
+	_codes_label.visible = bool(state.get("codes", false))
+	add_child(_codes_label)
+	Arcade.scene("title")
+	_update_hint()
+	if not bool(state.get("tutorial_done", false)):
+		_start_tutorial()
+
+
+func _arcade_exit() -> void:
+	result_overlay.visible = false
+	result_overlay.modulate.a = 1.0
+	_focus_initial_control()
+	Arcade.scene("title")
+
+
+func _apply_code(code: String) -> void:
+	match code.to_upper():
+		"UNLOCKALL":
+			state["unlock_all"] = true
+		"CREDITS5K":
+			state["credits"] = int(state.get("credits", 0)) + 5000
+		"GOLDRUN":
+			_gold_next = true
+		_:
+			return
+	state["codes"] = true
+	_codes_label.visible = true
+	_refresh_all()
+	_show_toast("Code on: " + code.to_upper())
+
+
+func _start_tutorial() -> void:
+	_tut_step = 0
+	_tut_label.text = TUTORIAL[0][1]
+	_tut_panel.visible = true
+	Arcade.event("tutorial-start")
+
+
+func _tutorial_on(what: String) -> void:
+	if _tut_step < 0:
+		return
+	var at := -1
+	for i in range(_tut_step, TUTORIAL.size()):
+		if TUTORIAL[i][0] == what:
+			at = i
+			break
+	if at < 0:
+		return
+	_tut_step = at + 1  # doing a later step also covers the ones before it
+	if _tut_step >= TUTORIAL.size():
+		_end_tutorial()
+		return
+	_tut_label.text = TUTORIAL[_tut_step][1]
+
+
+func _end_tutorial() -> void:
+	_tut_step = -1
+	if _tut_panel != null:
+		_tut_panel.visible = false
+	state["tutorial_done"] = true
+	TourSave.save_state(state)
+	Arcade.event("tutorial-done")
+
+
+func _update_hint() -> void:
+	for stop in stops:
+		if not _is_stop_completed(stop.id) and _is_stop_unlocked(stop.id):
+			Arcade.set_hint("%s is next: score %s for bronze to unlock the stop after it." % [stop.display_name, _format_number(roundi(stop.target_score * 0.65))])
+			return
+	for stop in stops:
+		if str(state.get("medals", {}).get(stop.id, "none")) != "gold":
+			Arcade.set_hint("Every stop is done: replay %s for a gold medal and more tour points." % stop.display_name)
+			return
+	Arcade.set_hint("A perfect tour: every stop has gold.")

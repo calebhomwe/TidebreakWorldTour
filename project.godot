@@ -8,6 +8,10 @@ config_version=5
 config/name="TIDEBREAK World Tour"
 run/main_scene="res://world_tour_demo.tscn"
 
+[autoload]
+
+Arcade="*res://scripts/arcade/arcade_sdk.gd"
+
 [display]
 
 window/size/viewport_width=1600
