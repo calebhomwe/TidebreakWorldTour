@@ -1,0 +1,9 @@
+[gd_resource type="FontVariation" load_steps=3 format=3]
+
+[ext_resource type="FontFile" path="res://assets/fonts/OpenSans-Variable.ttf" id="1_base"]
+[ext_resource type="FontFile" path="res://assets/fonts/web_symbols.ttf" id="2_web_symbols"]
+
+[resource]
+base_font = ExtResource("1_base")
+fallbacks = Array[Font]([ExtResource("2_web_symbols")])
+variation_opentype = {2003265652: 600}
