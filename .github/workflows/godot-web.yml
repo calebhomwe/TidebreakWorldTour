@@ -17,7 +17,8 @@ permissions:
 
 concurrency:
   group: pages-${{ github.ref }}
-  cancel-in-progress: true
+  # Dedupe PR builds, but never cancel a master run mid-deploy (deploy-pages must finish).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   web:
@@ -42,9 +43,11 @@ jobs:
         run: godot --headless --path . --import
 
       - name: Boot main scene (fail on script errors)
+        # shell: bash enables pipefail, so a crashing/non-zero Godot is not masked by tee's exit 0.
+        shell: bash
         run: |
           godot --headless --path . --quit-after 300 2>&1 | tee boot.log
-          if grep -E "SCRIPT ERROR|Parse Error|Failed to load" boot.log; then exit 1; fi
+          if grep -E '^(ERROR|SCRIPT ERROR):|Parse Error' boot.log; then exit 1; fi
       - name: Export web build
         run: |
           mkdir -p build/web
