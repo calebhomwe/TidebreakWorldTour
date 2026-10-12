@@ -1,0 +1,4 @@
+.godot/
+build/
+harness-out/
+node_modules/

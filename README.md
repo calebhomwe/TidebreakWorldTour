@@ -2,6 +2,25 @@
 
 A standalone, data-driven World Tour screen for the TIDEBREAK surf game concept.
 
+## Play / Test
+
+- **Play in the browser:** https://calebhomwe.github.io/TidebreakWorldTour/ (deployed by
+  `.github/workflows/godot-web.yml` on every push to `master`; requires Settings -> Pages ->
+  Source: **GitHub Actions**).
+- **Play locally:** `godot --path .` (Godot 4.7).
+- **Headless smoke check:** `godot --headless --path . --import && godot --headless --path . --quit-after 300`
+- **Headless logic tests:** `godot --headless --path . -s tools/test_world_tour.gd` (medal thresholds, unlock
+  order, reward maths, save sanitising; backs up and restores your `user://` save).
+- **Play harness (browser):** export the web build, then `node tools/harness/play.mjs --mode default --episodes 2`
+  (also `mobile`, `storm`, `resize`, `blur`, `storage-blocked`, `long`; `--fault dead-mouse` must exit 1).
+  Needs Playwright Chromium: `npm i --no-save --no-package-lock playwright@1.56.1 && npx playwright install chromium`.
+- **Game wiki:** [docs/GAME_WIKI.md](docs/GAME_WIKI.md) - controls, loop, progression, juice inventory,
+  harness results and the evidence-bound scorecard.
+- **Web build:** `mkdir -p build/web && godot --headless --path . --export-release Web build/web/index.html`,
+  then serve `build/web/` with any static server (thread-less preset, no special headers needed). `build/`
+  is gitignored, so the `mkdir` is required on a fresh clone — Godot does not create the export folder.
+  CI also uploads it as the `web-build` Actions artifact.
+
 ## Included
 
 - Seven-stop world tour route
