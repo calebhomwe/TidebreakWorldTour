@@ -48,6 +48,8 @@ jobs:
         run: |
           godot --headless --path . --quit-after 300 2>&1 | tee boot.log
           if grep -E '^(ERROR|SCRIPT ERROR):|Parse Error' boot.log; then exit 1; fi
+      - name: Headless logic tests (medals, unlocks, rewards, save sanitising)
+        run: godot --headless --path . -s tools/test_world_tour.gd
       - name: Export web build
         run: |
           mkdir -p build/web
@@ -64,6 +66,38 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: build/web
+
+  harness:
+    # Plays the exported web build like a player (tools/harness/play.mjs): selects stops on the TourMap,
+    # presses START EVENT, picks results, resets and replays. Fails on page errors, stuck states, illegal
+    # phase transitions, out-of-range values or a season that never advances. Reports go to harness-out/.
+    needs: web
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: build/web
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright Chromium
+        run: |
+          npm i --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Play harness - default (2 seasons)
+        run: node tools/harness/play.mjs --mode default --episodes 2 --secs 40
+      - name: Play harness - mobile (touch, 390x844)
+        run: node tools/harness/play.mjs --mode mobile --episodes 1 --secs 30
+      - name: Play harness - storage-blocked (no IndexedDB/localStorage)
+        run: node tools/harness/play.mjs --mode storage-blocked --episodes 1 --secs 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: harness-out
+          path: harness-out
 
   deploy:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' && !github.event.repository.private }}
